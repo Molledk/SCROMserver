@@ -10,6 +10,7 @@ import com.scrom.model.SCROM;
 import com.scrom.model.action.PlayerAction;
 import com.scrom.model.action.ScromAction;
 import com.scrom.model.action.ServerAction;
+import com.scrom.model.card.Card;
 import com.sun.corba.se.spi.activation.Server;
 import sun.nio.ch.ThreadPool;
 
@@ -240,7 +241,10 @@ public class Lobby {
         }else if(action instanceof PlayerAction){
             PlayerAction a = (PlayerAction)action;
             switch(a.getActionType()){
-
+                case CardPlayed:
+                    Player player = game.getPlayer(a.getPlayerId());
+                    player.playCard((Card)a.getSubject());
+                    break;
             }
 
         }
