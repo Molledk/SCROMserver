@@ -5,7 +5,13 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.HashSet;
 
+import com.scrom.model.Player;
 import com.scrom.model.SCROM;
+import com.scrom.model.action.PlayerAction;
+import com.scrom.model.action.ScromAction;
+import com.scrom.model.action.ServerAction;
+import com.sun.corba.se.spi.activation.Server;
+import sun.nio.ch.ThreadPool;
 
 
 public class Lobby {
@@ -77,10 +83,10 @@ public class Lobby {
                         if (name == null) {
                             return;
                         }
-                        synchronized (players) {
+
                             if (!containsPlayer(name)) {
 
-                                players.add(new PlayerClient(name, oos));
+                                players.add(new PlayerClient(name, oos, ois));
 
                                 //make a new game
                                 if(players.size()==5){
@@ -89,13 +95,50 @@ public class Lobby {
                                     SCROM game = new SCROM();
                                     for (PlayerClient pl:players) game.addPlayer(pl.name);
                                     game.pregame();
-                                    write(game);
+                                    //initialize the players version of the game
+                                    write(new ServerAction(ServerAction.ActionType.Initialize,null,game));
                                     //game is on
                                     while(true){
-
-                                        game.preturn();
-
-
+                                        ServerAction NewTurn = new ServerAction(ServerAction.ActionType.NewTurn,null,null);
+                                        //perform logic for a new turn and broadcast that youve done so
+                                        performAndWrite(game, NewTurn);
+                                        ServerAction DealCard = new ServerAction(ServerAction.ActionType.CardPlayed,game.getCurrent().getID(),game.getCurrentCard());
+                                        //broadcast the current card and the current player
+                                        write(DealCard);
+                                        Thread[] rec = new Thread[players.size()];
+                                        int iter = 0;
+                                        for(PlayerClient pc: players){
+                                            rec[++iter] = new Thread(new Runnable() {
+                                                @Override
+                                                public void run() {
+                                                    boolean ready = false;
+                                                    while(!ready){
+                                                        PlayerAction action = null;
+                                                        try {
+                                                            action = (PlayerAction)pc.reader.readObject();
+                                                        } catch (IOException e) {
+                                                            e.printStackTrace();
+                                                        } catch (ClassNotFoundException e) {
+                                                            e.printStackTrace();
+                                                        }
+                                                        switch (action.getActionType()){
+                                                            case Ready:
+                                                                ready = true;
+                                                                break;
+                                                            default:
+                                                                performAndWrite(game,action);
+                                                        }
+                                                    }
+                                                }
+                                            });
+                                        }
+                                        for(int i = 0; i < rec.length; i++){
+                                            rec[i].start();
+                                        }
+                                        for(int i = 0; i < rec.length; i++){
+                                            rec[i].join();
+                                        }
+                                        resolveRound(game);
                                     }
 
                                 }
@@ -106,7 +149,7 @@ public class Lobby {
                         }
 
 
-                    }}
+                    }
 
 
 
@@ -140,11 +183,26 @@ public class Lobby {
                 }
             }
         }
+
+
+    }
+    private static void resolveRound(SCROM game) {
+        ServerAction resolveAction = new ServerAction(ServerAction.ActionType.Resolve,game.getCurrent().getID(),game.getCurrentCard());
+        performAndWrite(game,resolveAction);
     }
 
-    private static void write(SCROM game){
+    private static void performAndWrite(SCROM game, ScromAction newTurn) {
+        perform(game, newTurn);
+        write(newTurn);
+    }
+
+    private static void write(ScromAction action){
         for (PlayerClient player : players) {
-            player.writer.write(game);
+            try {
+                player.writer.writeObject(action);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
 
     }
@@ -165,5 +223,26 @@ public class Lobby {
 
         return false;
 
+    }
+
+    private static void perform(SCROM game, ScromAction action){
+        if(action instanceof ServerAction){
+            ServerAction a = (ServerAction)action;
+            switch(a.getActionType()){
+                case NewTurn:
+                    game.preturn();
+                    break;
+                case Resolve:
+                    game.resolve();
+                    break;
+
+            }
+        }else if(action instanceof PlayerAction){
+            PlayerAction a = (PlayerAction)action;
+            switch(a.getActionType()){
+
+            }
+
+        }
     }
 }
