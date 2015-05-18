@@ -1,13 +1,14 @@
 package com.scrom.server;
 
+import java.io.ObjectOutputStream;
 import java.io.PrintWriter;
 import java.util.HashSet;
 
-public class Player {
+public class PlayerClient {
     public String name;
-    public PrintWriter writer;
+    public ObjectOutputStream writer;
 
-    public Player(String n, PrintWriter w){
+    public PlayerClient(String n, ObjectOutputStream w){
         this.name=n;
         this.writer=w;
     }

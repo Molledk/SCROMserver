@@ -1,13 +1,11 @@
 package com.scrom.server;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.HashSet;
-import com.scrom.server.Player;
+
+import com.scrom.model.SCROM;
 
 
 public class Lobby {
@@ -17,7 +15,8 @@ public class Lobby {
      */
     static ServerSocket listener;
 
-    private static HashSet<Player> players = new HashSet<Player>();
+    private static HashSet<PlayerClient> players = new HashSet<PlayerClient>();
+
 
 
     /**
@@ -43,8 +42,11 @@ public class Lobby {
     private static class Handler extends Thread {
         private String name;
         private Socket socket;
+        private ObjectInputStream ois;
+        private ObjectOutputStream oos;
         private BufferedReader in;
         private PrintWriter out;
+
 
         /**
          * Constructs a handler thread, squirreling away the socket.
@@ -57,44 +59,53 @@ public class Lobby {
 
         public void run() {
             try {
-
-                in = new BufferedReader(new InputStreamReader(
+                ois = new ObjectInputStream(socket.getInputStream());
+                oos = new ObjectOutputStream(socket.getOutputStream());
+                /*in = new BufferedReader(new InputStreamReader(
                         socket.getInputStream()));
-                out = new PrintWriter(socket.getOutputStream(), true);
+                out = new PrintWriter(socket.getOutputStream(), true);*/
 
 
                 while (true) {
                     if( players.size()==5){
-                        out.println("GameStarted");
+                        oos.write(("GameStarted").getBytes());
 
                     }else{
-                        out.println("SUBMITNAME");
-                        name = in.readLine();
+                        oos.write(("NAME").getBytes());
+                        byte[] inName = new byte[256];
+                        name = inName.toString();
                         if (name == null) {
                             return;
                         }
                         synchronized (players) {
                             if (!containsPlayer(name)) {
 
-                                players.add(new Player(name, out));
-                                out.println("NAMEACCEPTED");
-                                write("Welcome to: "+name);
+                                players.add(new PlayerClient(name, oos));
+
                                 //make a new game
                                 if(players.size()==5){
-                                    //make a new game
                                     System.out.println("gamestart");
+                                    //make a new game
+                                    SCROM game = new SCROM();
+                                    for (PlayerClient pl:players) game.addPlayer(pl.name);
+                                    game.pregame();
+                                    write(game);
+                                    //game is on
+                                    while(true){
+
+                                        game.preturn();
+
+
+                                    }
+
                                 }
 
 
                                 break;
                             }
                         }
-                        try {
-                            sleep(100);
-                        } catch (InterruptedException e) {
-                            // TODO Auto-generated catch block
-                            System.out.println(e.toString());
-                        }
+
+
                     }}
 
 
@@ -105,7 +116,7 @@ public class Lobby {
                     if (input == null) {
                         return;
                     }
-                    write(name + ": " + input);
+
                     try {
                         sleep(100);
                     } catch (InterruptedException e) {
@@ -131,14 +142,14 @@ public class Lobby {
         }
     }
 
-    private static void write(String msg){
-        for (Player player : players) {
-            player.writer.println("MESSAGE " + msg);
+    private static void write(SCROM game){
+        for (PlayerClient player : players) {
+            player.writer.write(game);
         }
 
     }
     private static void removePlayer(String name){
-        for (Player player : players) {
+        for (PlayerClient player : players) {
             if(player.name==name){
                 players.remove(player);
             }
@@ -146,7 +157,7 @@ public class Lobby {
 
     }
     private static Boolean containsPlayer(String name){
-        for (Player player : players) {
+        for (PlayerClient player : players) {
             if(player.name.equals(name)){
                 return true;
             }
